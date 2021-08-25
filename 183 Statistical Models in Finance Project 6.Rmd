@@ -1,0 +1,554 @@
+---
+title: "C183 Project 6"
+author: "Huimin Zhang"
+date: "5/4/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## (a) Assume the multigroup model holds with short sales allowed. Find the composition of the optimal portfolio and its expected return and standard deviation and place it on the plot you constructed in previous projects with all the other portfolios and stocks.
+
+```{r}
+# Financial Services
+# JPM,V,BAC,MA,WFC,C
+# 
+# Healthcare
+# JNJ,UNH,PFE,ABT,TMO,MRK
+# 
+# Technology
+# AAPL,FB,TSLA,MSFT,NVDA,ORCL
+# 
+# Basic Materials
+# SHW,VMC,MLM,WPM,CE,ALB
+# 
+# Energy
+# XOM,CVX,MMP,TOT,PTR,BP
+
+#Read csv file:
+a <- read.csv("stockData_MG.csv", sep=",", header=TRUE)
+
+#Convert adjusted close prices into returns:
+r <- (a[-1,4:ncol(a)]-a[-nrow(a),4:ncol(a)])/a[-nrow(a),4:ncol(a)]
+
+#Compute correlation matrix:
+cormat <- cor(r)
+
+#Compute mean vector:
+means <- colMeans(r)
+
+#Compute variance covariance matrix:
+covmat <- cov(r)
+
+#Compute the vector of standard deviations:
+stdev <- diag(covmat)^.5
+
+#Compute the average correlation matrix
+rho11 <- (sum(cormat[1:6, 1:6]) - 6) / 30 
+rho12 <- sum(cormat[1:6, 7:12]) / 36 
+rho13 <- sum(cormat[1:6, 13:18]) / 36 
+rho14 <- sum(cormat[1:6, 19:24]) / 36 
+rho15 <- sum(cormat[1:6, 25:30]) / 36
+rho22 <- (sum(cormat[7:12, 7:12]) - 6) / 30 
+rho23 <- sum(cormat[7:12, 13:18]) / 36 
+rho24 <- sum(cormat[7:12, 19:24]) / 36 
+rho25 <- sum(cormat[7:12, 25:30]) / 36
+rho33 <- (sum(cormat[13:18, 13:18]) - 6) / 30 
+rho34 <- sum(cormat[13:18, 19:24]) / 36
+rho35 <- sum(cormat[13:18, 25:30]) / 36
+rho44 <- (sum(cormat[19:24, 19:24]) - 6) / 30 
+rho45 <- sum(cormat[19:24, 25:30]) / 36
+rho55 <- (sum(cormat[25:30, 25:30]) - 6) / 30
+rho_bar_mtr <- matrix(c(rho11,rho12,rho13,rho14,rho15, rho12,rho22,rho23,rho24,rho25,
+                rho13,rho23,rho33,rho34,rho35, rho14,rho24,rho34,rho44,rho45,
+                rho15,rho25,rho35,rho45,rho55), ncol = 5, byrow = TRUE)
+rho_bar_mtr
+
+#Compute A
+A <- matrix(0, nrow = 5, ncol = 5) 
+for(i in 1:5) {
+  for(j in 1:5) {
+      A[i, j] <- (5 * rho_bar_mtr[i, j]) / (1 - rho_bar_mtr[i, i])
+  }
+}
+A <- A + diag(5)
+
+#Compute C
+rf <- 0.001
+rho_bar_i <- rep(diag(rho_bar_mtr), 6)
+C_hat <- matrix(0, nrow = 6, ncol = 5) 
+for(i in 1:30) {
+  C_hat[i] <- (means[i] - rf) / stdev[i] * (1 - rho_bar_i[i])
+}
+C <- colSums(C_hat)
+
+#Compute phi
+phi <- solve(A) %*% C
+
+#Compute cut-off points
+C_star <- t(phi) %*% rho_bar_mtr
+
+#Compute Z
+C_star_i <- rep(C_star, 6)
+Z <- rep(0, 30)
+for(i in 1:30) {
+  Z[i] <- (1 / (stdev[i] * (1 - rho_bar_i[i]))) * (((means[i] - rf) / stdev[i]) - C_star_i[i])
+}
+
+#Compute X
+X_mg <- Z / sum(Z)
+
+#Expected Return
+e_mg <- t(X_mg) %*% means
+e_mg
+
+#Risk(standard deviation):
+sd_mg <- sqrt(t(X_mg) %*% covmat %*% X_mg)
+sd_mg
+
+#Plot
+#Convert adjusted close prices into returns:
+r <- (a[-1,3:ncol(a)]-a[-nrow(a),3:ncol(a)])/a[-nrow(a),3:ncol(a)]
+
+#Compute the betas:
+covmat <- var(r)
+beta <- covmat[1,-1] / covmat[1,1]
+
+#Keep only the stocks with positive betas:
+rrr <- r[, -c(1, which(beta<0)+1)]
+
+#Initialize
+beta <- rep(0,ncol(rrr))
+alpha <- rep(0,ncol(rrr))
+mse <- rep(0,ncol(rrr))
+Ribar <- rep(0,ncol(rrr))
+Ratio <- rep(0,ncol(rrr))
+stock <- rep(0,ncol(rrr))
+
+#Risk free asset:
+rf <- 0.001
+
+#This for loop computes the required inputs:
+for(i in 1:ncol(rrr)){
+	q <- lm(data=rrr, formula=rrr[,i] ~ r[,1])
+	beta[i] <- q$coefficients[2] 
+	alpha[i] <- q$coefficients[1] 
+  mse[i] <- summary(q)$sigma^2
+	Ribar[i] <- q$coefficients[1] + q$coefficients[2]*mean(r[,1])
+	Ratio[i] <- (Ribar[i]-rf)/beta[i]
+  stock[i] <- i
+}
+
+#So far we have this table:
+xx <- (cbind(stock,alpha, beta, Ribar, mse, Ratio))
+
+#Construct the 30 × 30 variance covariance matrix based on the single index model:
+covmat_sim <- covmat[1,1] * (beta %*% t(beta)) + diag(mse)
+
+R <- Ribar - rf
+
+#Compute the vector Z:
+Z <- solve(covmat_sim) %*% R
+
+#Compute the vector X:
+X <- Z/sum(Z)
+
+#Order the table based on the excess return to beta ratio:
+A <- xx[order(-xx[,6]),]
+
+col1 <- rep(0,nrow(A))
+col2 <- rep(0,nrow(A))
+col3 <- rep(0,nrow(A))
+col4 <- rep(0,nrow(A))
+col5 <- rep(0,nrow(A))
+
+#Create the last 5 columns of the table:
+col1 <- (A[,4]-rf) * A[,3] / A[,5]
+col3 <- A[,3]^2 / A[,5]
+for(i in(1:nrow(A))) {
+  col2[i] <- sum(col1[1:i])
+  col4[i] <- sum(col3[1:i])
+}
+
+#Compute the Ci (col5):
+for(i in (1:nrow(A))) {
+  col5[i] <- var(r[,1])*col2[i]/(1+var(r[,1])*col4[i])
+}
+
+sim_table <- cbind(A, col1, col2, col3, col4, col5)
+
+#SHORT SALES ALLOWED:
+#Compute the Zi:
+z_short <- (A[,3]/A[,5]) * (A[,6]-col5[nrow(A)])
+
+#Compute the xi:
+x_short <- z_short / sum(z_short)
+
+#The final table when short sales allowed:
+Weights_with_short <- cbind(A, col1, col2, col3, col4, col5, z_short, x_short)
+Weights_with_short_sort <- Weights_with_short[order(Weights_with_short[,1]),]
+
+#Calculate the expected return and sd of the point of tangency
+cov_mat_short <- covmat[1,1] * Weights_with_short_sort[,3] %*% t(Weights_with_short_sort[,3]) + 
+  diag(Weights_with_short_sort[,5]) 
+sd_short <- (t(Weights_with_short_sort[,13]) %*% cov_mat_short %*% Weights_with_short_sort[,13])^.5
+R_short <- t(Weights_with_short_sort[,13]) %*% Weights_with_short_sort[,4]
+
+
+#SHORT SALES NOT ALLOWED:
+#First create a matrix up to the maximum of col5:
+table1 <- cbind(A, col1, col2, col3, col4, col5)
+table2 <- table1[1:which(col5==max(col5)), ]
+
+#Compute the Zi:
+z_no_short <- (table2[,3]/table2[,5]) * (table2[,6]-max(col5))
+
+#Compute the xi:
+x_no_short <- z_no_short / sum(z_no_short)
+
+#The final table when short sales are not allowed:
+Weights_with_no_short <- cbind(table2, z_no_short, x_no_short)
+Weights_with_no_short_sort <- Weights_with_no_short[order(Weights_with_no_short[,1]),]
+
+#Calculate the expected return and sd of the point of tangency
+cov_mat_no_short <- covmat[1,1] * Weights_with_no_short_sort[,3] %*% t(Weights_with_no_short_sort[,3]) + 
+  diag(Weights_with_no_short_sort[,5]) 
+sd_no_short <- (t(Weights_with_no_short_sort[,13]) %*% cov_mat_no_short %*% Weights_with_no_short_sort[,13])^.5
+R_no_short <- t(Weights_with_no_short_sort[,13]) %*% Weights_with_no_short_sort[,4]
+
+#Compute the average correlation:
+rho <- (sum(cor(r[2:31]))-30)/(30*29)
+
+#Initialize the vectors:
+col1 <- rep(0,10)
+col2 <- rep(0,10)
+col3 <- rep(0,10)
+
+#Compute necessary quantities:
+Rbar <- colMeans(r[2:31])
+Rbar_f <- Rbar - 0.001
+sigma <- (diag(var(r[2:31])))^0.5
+Ratio <- Rbar_f/sigma
+
+#Initial table:
+xx <- (cbind(Rbar, Rbar_f, sigma, Ratio))
+
+#Order the table based on the excess return to sigma ratio:
+aaa <- xx[order(-Ratio),]
+
+#Create the last 3 columns of the table:
+for(i in(1:30)) {
+  col1[i] <- rho / (1-rho+i*rho)
+  col2[i] <- sum(aaa[,4][1:i])
+}
+
+#Compute the Ci:
+for(i in (1:30)) {
+  col3[i] <- col1[i] * col2[i]
+}
+
+#Create the entire table until now:
+xxx <- cbind(aaa, col1, col2, col3)
+
+#SHORT SALES ALLOWED:
+#Compute the Zi:
+z <- (1/((1-rho)*xxx[,3]))*(xxx[,4]-xxx[,7][nrow(xxx)])
+
+#Compute the xi:
+x <- z/sum(z)
+
+#The final table:
+aaaa <- cbind(xxx, z, x)
+
+#SHORT SALES NOT ALLOWED:
+#Find composition of optimum portfolio when short sales are not allowed:
+aaaaa <- aaaa[1:which(aaaa[,7]==max(aaaa[,7])), ]
+
+#Compute the Zi:
+z_no <- (1/((1-rho)*aaaaa[,3]))*(aaaaa[,4]-aaaaa[,7][nrow(aaaaa)])
+
+#Compute the xi:
+x_no <- z_no/sum(z_no)
+
+#Final table:
+a_no <- cbind(aaaaa, z_no, x_no)
+
+#Initialize the var-covar matrix:
+mat <- matrix(rep(0,900), ncol=30, nrow=30)
+
+#Var-covar matrix based on the constant correlation model:
+for(i in 1:30){
+	for(j in 1:30){
+	if(i==j){
+		mat[i,j]=aaaa[i,3]^2
+		} else {
+		  mat[i,j]=rho*aaaa[i,3]*aaaa[j,3]
+    }
+  }
+}
+
+#Calculate the expected return and sd of the point of tangency 
+#when short sales allowed
+sd_p_opt <- (t(x) %*% mat %*% x)^.5
+R_p_opt <- t(x) %*% aaaa[,1]
+
+#Calculate the expected return and sd of the point of tangency 
+#when short sales are not allowed
+sd_p_opt_no <- (t(x_no) %*% mat[1:which(aaaa[,7]==max(aaaa[,7])),1:which(aaaa[,7]==max(aaaa[,7]))] 
+                %*% x_no)^.5
+R_p_opt_no <- t(x_no) %*% aaaaa[,1]
+
+## The frontiers using the historical variance covariance matrix (project 2)
+#Convert adjusted close prices into returns:
+rr <- (a[-1,4:ncol(a)] - a[-nrow(a),4:ncol(a)]) / a[-nrow(a),4:ncol(a)]
+
+#Compute the means:
+means.rr <- colMeans(rr)
+#Find the covariance matrix:
+covmat.rr <- cov(rr)
+#Compute the vector of variances:
+variances.rr <- diag(covmat.rr)
+
+ones <- matrix(rep(1, 30))
+
+#Compute A:
+A <- as.numeric(t(ones) %*% solve(covmat.rr) %*% means.rr)
+#Compute B:
+B <- as.numeric(t(means.rr) %*% solve(covmat.rr) %*% means.rr)
+#Compute C:
+C <- as.numeric(t(ones) %*% solve(covmat.rr) %*% ones)
+#Compute D:
+D <- as.numeric(B*C - A^2)
+
+plot(0, A/C, main = "Portfolio possibilities curve (hyperbola)", type = "n", 
+     xlab = "Risk (standard deviation)", ylab = "Expected Return", 
+     xlim = c(0, 0.1), ylim = c(-0.06, 0.08))
+
+#Find the asymptotic:
+V <- seq(0, 2, 0.001)
+A1 <- A/C + V * sqrt(D/C)
+A2 <- A/C - V * sqrt(D/C)
+
+#Efficient frontier:
+minvar <- 1/C
+minE <- A/C
+sdeff <- seq((minvar)^0.5, 1, by = 0.0001)
+options(warn = -1)
+y1 <- minE + sqrt(D*(C*sdeff^2 - 1)) * minvar
+y2 <- minE - sqrt(D*(C*sdeff^2 - 1)) * minvar
+options(warn = 0)
+
+points(sdeff, y1, type = "l")
+points(sdeff, y2, type = "l")
+
+#Compute the means:
+means.rr <- colMeans(rr)
+#Compute the vector of standard deviations:
+stdev.rr <- diag(covmat.rr)^.5
+
+#add the 30 stocks
+points(stdev.rr, means.rr)
+
+#add the S&P500
+rsp <- (a[-1,3]-a[-nrow(a),3])/a[-nrow(a),3]
+meansp <- mean(rsp)
+sdsp <- sd(rsp)
+
+points(sdsp, meansp, col = "orange", pch = 19)
+text(sdsp, meansp-0.005, "S&P500", col = "orange")
+
+points(sd_short, R_short, col = "blue", pch = 19)
+text(sd_short, R_short+0.005, "SIM short sell", col = "blue")
+
+points(sd_no_short, R_no_short, col = "red", pch = 19)
+text(sd_no_short, R_no_short+0.005, "SIM no short sell", col = "red")
+
+points(sd_p_opt, R_p_opt, col="green", pch=19)
+text(sd_p_opt, R_p_opt+0.005, "CCM short sell", col = "green")
+
+points(sd_p_opt_no, R_p_opt_no, col="purple", pch=19)
+text(sd_p_opt_no, R_p_opt_no-0.005, "CCM no short sell", col = "purple")
+
+points(sd_mg, e_mg, col="yellow", pch=19)
+text(sd_mg, e_mg-0.005, "Multigroup", col = "yellow")
+```
+
+\pagebreak
+
+## (b) Evaluate your portfolios that you constructed in the previous projects. In your analysis you should include the following:
+
+## 1. Time plots of the performance of all portfolios compared to the S&P500 (see the graph constructed using handout #51).
+
+```{r}
+#Read csv file:
+#a <- read.csv("stockData.csv", sep=",", header=TRUE)
+
+#Convert adjusted close prices into returns:
+r <- (a[-1,3:ncol(a)]-a[-nrow(a),3:ncol(a)])/a[-nrow(a),3:ncol(a)]
+
+#Market (S&P500) performance for the period 01-Jan-2013 to 01-Jan-2018:
+plot(cumprod(1+r[, 1]), col="darkblue", lwd=2, type="l", ylim=c(0.5, 11.5), 
+     xlab="01-Jan-2013 to 01-Jan-2018 (months)", ylab="Growth of the portfolios",
+     main="Time plots of the performance of all portfolios compared to the S&P500")
+
+#Convert adjusted close prices into returns:
+rr <- (a[-1,4:ncol(a)]-a[-nrow(a),4:ncol(a)])/a[-nrow(a),4:ncol(a)]
+
+#Compute the means:
+means.rr <- colMeans(rr)
+
+#Find the covariance matrix:
+covmat.rr <- cov(rr)
+
+##### 1. portfolio of the equal allocation
+X_eq <- rep(1/ncol(rr), ncol(rr))
+r_eq <-  as.matrix(rr) %*% X_eq
+e_eq <- t(X_eq) %*% means.rr
+sd_eq <- sqrt(t(X_eq) %*% covmat.rr %*% X_eq)
+points(cumprod(1+r_eq), col="darkcyan", lwd=2, type="l")
+
+##### 2. portfolio of the minimum risk
+ones <- matrix(rep(1, 30))
+X_min <- solve(covmat.rr) %*% ones  / as.vector(t(ones) %*% solve(covmat.rr) %*% ones)
+r_min <-  as.matrix(rr) %*% X_min
+e_min <- t(X_min) %*% means.rr
+sd_min <- sqrt(t(X_min) %*% covmat.rr %*% X_min)
+points(cumprod(1+r_min), col="darkgoldenrod", lwd=2, type="l")
+
+##### 3. portfolio of the given expected return E (E = 0.01)
+#Compute A:
+A <- as.numeric(t(ones) %*% solve(covmat.rr) %*% means.rr)
+#Compute B:
+B <- as.numeric(t(means.rr) %*% solve(covmat.rr) %*% means.rr)
+#Compute C:
+C <- as.numeric(t(ones) %*% solve(covmat.rr) %*% ones)
+#Compute D:
+D <- as.numeric(B*C - A^2)
+
+E_g <- 0.01
+lambda1_g <- (C*E_g - A) / D
+lambda2_g <- (B - A*E_g) / D
+
+X_g <- solve(covmat.rr) %*% (lambda1_g * means.rr + lambda2_g * ones)
+r_g <-  as.matrix(rr) %*% X_g
+e_g <- t(X_g) %*% means.rr
+sd_g <- sqrt(t(X_g) %*% covmat.rr %*% X_g)
+points(cumprod(1+r_g), col="darkgreen", lwd=2, type="l")
+
+##### 4. portfolio of the tangency point G (Assume Rf = 0.0001 and that short sales are allowed.)
+rf <- 0.001
+R_tg <- means.rr - rf
+Z_tg <- solve(covmat.rr) %*% R_tg
+
+X_tg <- Z_tg / sum(Z_tg)
+r_tg <-  as.matrix(rr) %*% X_tg
+e_tg <- t(X_tg) %*% means.rr
+sd_tg <- sqrt(t(X_tg) %*% covmat.rr %*% X_tg)
+points(cumprod(1+r_tg), col="darkorange", lwd=2, type="l")
+
+##### 5. portfolio of the single index model
+# SHORT SALES ALLOWED:
+x_short <- z_short / sum(z_short)
+r_short <-  as.matrix(rr) %*% x_short
+e_short <- t(x_short) %*% means.rr
+sd_short <- sqrt(t(x_short) %*% covmat.rr %*% x_short)
+points(cumprod(1+r_short), col="darkred", lwd=2, type="l")
+
+
+##### 6. portfolio of constant correlation model
+# SHORT SALES ALLOWED:
+# Compute the Zi:
+z_c <- (1/((1-rho)*xxx[,3]))*(xxx[,4]-xxx[,7][nrow(xxx)])
+
+#Compute the xi:
+x_c <- z_c/sum(z_c)
+r_c <-  as.matrix(rr) %*% x_c
+e_c <- t(x_c) %*% means.rr
+sd_c <- sqrt(t(x_c) %*% covmat.rr %*% x_c)
+points(cumprod(1+r_c), col="darkorchid", lwd=2, type="l")
+
+##### 7. portfolio of multigroup model
+r_mg <-  as.matrix(rr) %*% X_mg
+points(cumprod(1+r_mg), col="darksalmon", lwd=2, type="l")
+
+#Add a legend:
+legend('topleft', lty=1, lwd=2,
+       c("S&P500","Equal", "Minimum", "Given E", "Tangency", "SIM", "CCM", "MGM"), 
+       col=c("darkblue", "darkcyan", "darkgoldenrod", "darkgreen", "darkorange", "darkred", "darkorchid", "darksalmon"))
+```
+
+## 2. Calculate the Sharpe ratio, differential excess return, Treynor measure, and Jensen differential perfor- mance index.
+
+```{r}
+
+# Sharp ratio
+rt <- c(e_eq, e_min, e_g, e_tg, e_short, e_c, e_mg)
+sd <- c(sd_eq, sd_min, sd_g, sd_tg, sd_short, sd_c, sd_mg)
+Sharp <- (rt - rf) / sd
+names(Sharp) <- c("Equal", "Minimum", "Given E", "Tangency", "SIM", "CCM", "MGM")
+Sharp
+
+# differential excess return
+#S&P500
+rsp <- (a[-1,3]-a[-nrow(a),3])/a[-nrow(a),3]
+meansp <- mean(rsp)
+sdsp <- sd(rsp)
+der <- rf + ((meansp - rf) / sdsp) * sd
+names(der) <- c("Equal", "Minimum", "Given E", "Tangency", "SIM", "CCM", "MGM")
+der
+
+# Treynor measure
+#Compute the betas:
+covmat <- var(r)
+beta <- covmat[1,-1] / covmat[1,1]
+wx <- matrix(c(X_eq, X_min, X_g, X_tg, x_short, x_c, X_mg), ncol = 7)
+beta1 <- apply(wx, 2, function(x) sum(x * beta))
+Treynor <- (rt - rf) / beta1
+names(Treynor) <- c("Equal", "Minimum", "Given E", "Tangency", "SIM", "CCM", "MGM")
+Treynor
+
+# Jensen differential performance index
+ra <- rf + (meansp - rf) * beta1
+Jensen <- rt - ra
+names(Jensen) <- c("Equal", "Minimum", "Given E", "Tangency", "SIM", "CCM", "MGM")
+Jensen
+```
+
+## 3. Decompose the overall performance using Fama’s decomposition (net selectivity and diversification) for the single index model when short sales are not allowed. Please show this decomposition on the plot expected return against beta.
+
+```{r}
+overall <- R_no_short - rf
+overall
+
+selectivity <- R_no_short - (rf + (meansp - rf) * beta1[5])
+selectivity
+
+risk <- (rf + (meansp - rf) * beta1[5]) - rf
+risk
+
+net_select <- R_no_short - (rf + (meansp - rf) * sqrt(sd_no_short^2 / sdsp^2))
+net_select
+
+diversification <- (rf + (meansp - rf) * sqrt(sd_no_short^2 / sdsp^2)) - (rf + (meansp - rf) * beta1[5])
+diversification
+
+#plot
+beta2 <- seq(0, 1.5, 0.001)
+rc <- rf + (meansp - rf) * beta2
+
+plot(beta2, rc, ylim= c(0,0.03), xlab = "Beta", ylab = "Expected Return")
+segments(beta1[5], R_no_short, beta1[5], rf, lty = 2)
+segments(sqrt(sd_no_short^2 / sdsp^2), (rf + (meansp - rf) * sqrt(sd_no_short^2 / sdsp^2)), 
+         beta1[5], (rf + (meansp - rf) * sqrt(sd_no_short^2 / sdsp^2)), lty = 2)
+segments(0, rf, beta1[5], rf, lty = 2)
+points(beta1[5], (rf + (meansp - rf) * beta1[5]), col = "red", pch = 19)
+points(sqrt(sd_no_short^2 / sdsp^2), (rf + (meansp - rf) * sqrt(sd_no_short^2 / sdsp^2)), col = "blue", pch = 19)
+points(1, meansp, col = "green", pch = 19)
+points(0, rf, col = "yellow", pch = 19)
+points(beta1[5], R_no_short, col = "purple", pch = 19)
+legend('topleft', pch = 19,
+       c('A', 'A\'', 'A\'\'', 'Market', 'Risk Free'), 
+       col=c("purple", "red", "blue", "green", "yellow"))
+```

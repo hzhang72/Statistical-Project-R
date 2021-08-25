@@ -1,0 +1,293 @@
+---
+title: "C183 Project 2"
+author: "Huimin Zhang"
+date: "4/6/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## (a) Compute A, B, C, D.
+
+```{r}
+#Read csv file:
+a <- read.csv("stockData.csv", sep=",", header=TRUE)
+dim(a)
+a[1:5, 1:5]
+
+#Convert adjusted close prices into returns:
+rr <- (a[-1,4:ncol(a)] - a[-nrow(a),4:ncol(a)]) / a[-nrow(a),4:ncol(a)]
+rr[1:5, 1:5]
+
+#Compute the means:
+means.rr <- colMeans(rr)
+
+#Find the covariance matrix:
+covmat.rr <- cov(rr)
+
+#Compute the vector of variances:
+variances.rr <- diag(covmat.rr)
+
+#Compute the vector of standard deviations:
+stdev.rr <- diag(covmat.rr)^.5
+
+ones <- matrix(rep(1, 30))
+
+#Compute A:
+A <- as.numeric(t(ones) %*% solve(covmat.rr) %*% means.rr)
+A
+
+#Compute B:
+B <- as.numeric(t(means.rr) %*% solve(covmat.rr) %*% means.rr)
+B
+
+#Compute C:
+C <- as.numeric(t(ones) %*% solve(covmat.rr) %*% ones)
+C
+
+#Compute D:
+D <- as.numeric(B*C - A^2)
+D
+```
+
+## (b) Compute the values of the two Lagrange multipliers.
+
+```{r}
+E <- mean(means.rr)
+E
+
+lambda1 <- (C*E - A) / D
+lambda1
+
+lambda2 <- (B - A*E) / D
+lambda2
+```
+
+## (c) Find the composition of the efficient portfolio given the return E.
+
+```{r}
+E_g <- 0.05
+
+lambda1_g <- (C*E_g - A) / D
+lambda1_g
+
+lambda2_g <- (B - A*E_g) / D
+lambda2_g
+
+X_g <- solve(covmat.rr) %*% (lambda1_g * means.rr + lambda2_g * ones)
+X_g
+```
+
+## (d) Plot the frontier in the mean-variance space (parabola)
+
+```{r}
+#Give values for E:
+E_pb <- seq(-2, 2, 0.01)
+
+#Compute sigma2 as a function of A,B,C,D, and E:
+sigma2_pb <- (C*E_pb^2 - 2*A*E_pb + B) / D
+
+#Plot E against sigma2:
+plot(sigma2_pb, E_pb, type = "l", main = "Portfolio possibilities curve (parabola)",
+     xlab = "Risk (variance)", ylab = "Expected Return")
+```
+
+## (e) Plot the frontier in the mean-standard deviation space using the hyperbola method.
+
+```{r}
+plot(0, A/C, main = "Portfolio possibilities curve (hyperbola)", type = "n", 
+     xlab = "Risk (standard deviation)", ylab = "Expected Return", 
+     xlim = c(-2*sqrt(1/C), 4*sqrt(1/C)), ylim = c(-2*A/C, 4*A/C))
+
+#Plot center of the hyperbola:
+points(0, A/C, pch = 19)
+
+#Plot transverse and conjugate axes:
+abline(v = 0, lty = 2) #Also this is the y-axis.
+abline(h = A/C)
+
+#Plot the x-axis:
+abline(h = 0, lty = 2)
+
+#Find the asymptotic:
+V <- seq(-1, 1, 0.001)
+A1 <- A/C + V * sqrt(D/C)
+A2 <- A/C - V * sqrt(D/C)
+points(V, A1, type = "l")
+points(V, A2, type = "l")
+
+#Efficient frontier:
+minvar <- 1/C
+minE <- A/C
+sdeff <- seq((minvar)^0.5, 1, by = 0.0001)
+options(warn = -1)
+y1 <- minE + sqrt(D*(C*sdeff^2 - 1)) * minvar
+y2 <- minE - sqrt(D*(C*sdeff^2 - 1)) * minvar
+options(warn = 0)
+
+points(sdeff, y1, type = "l")
+points(sdeff, y2, type = "l")
+```
+
+## (f) On the plot in (e) add the 30 stocks, the S&P500, the equal allocation portfolio, the minimum risk portfolio, and the portfolio in (c).
+
+```{r}
+plot(0, A/C, main = "Portfolio possibilities curve (hyperbola)", type = "n", 
+     xlab = "Risk (standard deviation)", ylab = "Expected Return", 
+     xlim = c(-2*sqrt(1/C), 5*sqrt(1/C)), ylim = c(-3*A/C, 5*A/C))
+
+#Plot center of the hyperbola:
+points(0, A/C, pch = 19)
+
+#Plot transverse and conjugate axes:
+abline(v = 0, lty = 2) #Also this is the y-axis.
+abline(h = A/C)
+
+#Plot the x-axis:
+abline(h = 0, lty = 2)
+
+#Find the asymptotic:
+V <- seq(-1, 1, 0.001)
+A1 <- A/C + V * sqrt(D/C)
+A2 <- A/C - V * sqrt(D/C)
+points(V, A1, type = "l")
+points(V, A2, type = "l")
+
+#Efficient frontier:
+minvar <- 1/C
+minE <- A/C
+sdeff <- seq((minvar)^0.5, 1, by = 0.0001)
+options(warn = -1)
+y1 <- minE + sqrt(D*(C*sdeff^2 - 1)) * minvar
+y2 <- minE - sqrt(D*(C*sdeff^2 - 1)) * minvar
+options(warn = 0)
+
+points(sdeff, y1, type = "l")
+points(sdeff, y2, type = "l")
+
+#add the 30 stocks
+points(stdev.rr, means.rr)
+
+#add the S&P500
+rsp <- (a[-1,3]-a[-nrow(a),3])/a[-nrow(a),3]
+meansp <- mean(rsp)
+sdsp <- sd(rsp)
+
+points(sdsp, meansp, col = "orange", pch = 19)
+text(sdsp, meansp-0.005, "S&P500", col = "orange")
+
+#add the equal allocation portfolio
+#Equal weights:
+X <- rep(1/ncol(rr), ncol(rr))
+
+#Expected return:
+ER <- t(X) %*% means.rr
+
+#Risk(standard deviation):
+SD <- sqrt(t(X) %*% covmat.rr %*% X)
+
+points(SD, ER, col = "red", pch = 19)
+text(SD, ER+0.005, "equal allocation", col = "red")
+
+#add the minimum risk portfolio
+#Minimum risk weight
+one <- matrix(rep(1, 30))
+X_min_n <- solve(covmat.rr) %*% one 
+X_min_d <- as.vector(t(one) %*% solve(covmat.rr) %*% one)
+X_min <- X_min_n / X_min_d
+
+#Expected return:
+ER_min <- t(X_min) %*% means.rr
+
+#Risk(standard deviation):
+SD_min <- sqrt(t(X_min) %*% covmat.rr %*% X_min)
+
+points(SD_min, ER_min, col = "blue", pch = 19)
+text(SD_min, ER_min+0.005, "minimum risk", col = "blue")
+
+#add the portfolio in (c).
+#Expected return:
+ER_g <- t(X_g) %*% means.rr
+
+#Risk(standard deviation):
+SD_g <- sqrt(t(X_g) %*% covmat.rr %*% X_g)
+
+points(SD_g, ER_g, col = "green", pch = 19)
+text(SD_g, ER_g-0.005, "prescribed expected return", col = "green")
+```
+
+
+## (g) Add three arbitrary portfolios on the plot of (c).
+
+```{r}
+set.seed(123)
+
+xa <- runif(30)
+x1 <- xa / sum(xa)
+head(x1)
+
+#Expected return:
+ER1 <- t(x1) %*% means.rr
+
+#Risk(standard deviation):
+SD1 <- sqrt(t(x1) %*% covmat.rr %*% x1)
+
+xb <- runif(30)
+x2 <- xb / sum(xb)
+head(x2)
+
+#Expected return:
+ER2 <- t(x2) %*% means.rr
+
+#Risk(standard deviation):
+SD2 <- sqrt(t(x2) %*% covmat.rr %*% x2)
+
+xc <- runif(30)
+x3 <- xc / sum(xc)
+head(x3)
+
+#Expected return:
+ER3 <- t(x3) %*% means.rr
+
+#Risk(standard deviation):
+SD3 <- sqrt(t(x3) %*% covmat.rr %*% x3)
+
+#the plot of (c)
+#Plot the minimum risk portfolio:
+plot(sqrt(1/C), A/C, pch=19, col="blue",
+     xlim = c(0, 5*sqrt(1/C)), ylim = c(-3*A/C, 5*A/C),
+     main = "Portfolio possibilities curve",
+     xlab = "Risk (standard deviation)", ylab = "Expected Return")
+    
+#Efficient frontier:
+minvar <- 1/C
+minE <- A/C
+sdeff <- seq((minvar)^0.5, 1, by = 0.0001)
+options(warn = -1)
+y1 <- minE + sqrt(D*(C*sdeff^2 - 1)) * minvar
+y2 <- minE - sqrt(D*(C*sdeff^2 - 1)) * minvar
+options(warn = 0)
+
+points(sdeff, y1, type = "l")
+points(sdeff, y2, type = "l")
+
+#Expected return:
+ER_g <- t(X_g) %*% means.rr
+
+#Risk(standard deviation):
+SD_g <- sqrt(t(X_g) %*% covmat.rr %*% X_g)
+
+points(SD_g, ER_g, col = "green", pch = 19)
+text(SD_g, ER_g-0.005, "prescribed expected return", col = "green")
+
+points(SD1, ER1, col = "red", pch = 19)
+text(SD1, ER1+0.005, "1", col = "red")
+
+points(SD2, ER2, col = "red", pch = 19)
+text(SD2, ER2+0.005, "2", col = "red")
+
+points(SD3, ER3, col = "red", pch = 19)
+text(SD3, ER3+0.005, "3", col = "red")
+```
